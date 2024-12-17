@@ -1,0 +1,36 @@
+network:
+  version: 2
+  ethernets:
+    eth1:
+      dhcp4: no
+      dhcp6: no
+      optional: true
+    eth0:
+      dhcp4: no
+      dhcp6: no
+      addresses: [10.0.1.104/24]
+      optional: true
+  wifis:
+    wlan0:
+      dhcp4: no
+      dhcp6: no
+      access-points:
+        "please-put-your-ESSID-here":
+          password: "please-put-your-wifi-password-here"
+      optional: true
+  bonds:
+    main-bond:
+      addresses: [10.0.0.2/24]
+      nameservers:
+          addresses: [10.0.0.1]
+      routes:
+          - to: default
+	  via: 10.0.2.1
+      interfaces:
+        - eth1
+        - wlan0
+      parameters:
+        mode: active-backup
+        primary: eth0
+        mii-monitor-interval: 1
+        gratuitious-arp: 5

@@ -1,0 +1,164 @@
+- name: setup generic icub machine
+  hosts: localhost
+  connection: local
+  debugger: true
+  vars:
+      target_ansible_min_version: "2.11"
+      target_robot: icub
+  
+
+  tasks:
+
+  - name: Print all available facts
+    ansible.builtin.debug:
+      var: ansible_facts
+
+# Preliminary checks
+  - name: Verify Ansible version is at least {{target_ansible_min_version}}
+    assert:
+      that: "ansible_version.full is version_compare('{{target_ansible_min_version}}', '>=')"
+      msg: >
+        "You must update Ansible to at least version {{target_ansible_min_version}}"
+          
+
+# 1. install packages
+  - name: Ansible Update Cache and Upgrade all Packages
+    become: true
+    register: updatesys
+    apt:
+      name: "*"
+      state: latest
+      update_cache: yes
+
+  - name: Install basic packages
+    become: true
+    apt:
+      state: present
+      name:
+        - nfs-common
+        - python-tk
+        - libopencv-dev
+        - ssh
+        - cmake-curses-gui
+        - linux-image-lowlatency
+        - linux-headers-lowlatency
+        - iperf 
+        - libportaudio2 
+        - portaudio19-dev 
+        - linux-sound-base 
+        - alsa-base 
+        - alsa-utils 
+        - gdb 
+        - meld 
+        - bmon 
+        - libi2c-dev 
+        - expect 
+        - libgfortran-10-dev 
+        - qml-module-qt-labs-folderlistmodel 
+        - qml-module-qt-labs-settings
+
+
+  - name: Install optional, but useful packages
+    become: true
+    apt:
+      state: present
+      name:
+        - vim
+        - htop
+        - iperf3
+        - net-tools
+        - nmap
+
+  - name: Creating user {{ target_robot }}
+    become: true
+    ansible.builtin.user:
+        name: "{{ target_robot }}"
+        state: present
+        shell: /bin/bash
+        password: "$y$j9T$xAxXfyYaY2VbD4AMfcF6F/$poSHChpX0hK./OsRvqOcyiwf3luyMNCQM/QWAMnfy84"
+        groups: sudo
+        create_home: yes
+        append: true      
+
+# 3. setting ntp client
+
+  - name: add 10.0.0.1 as ntp server
+    become: true
+    ansible.builtin.lineinfile:
+      backup: yes
+      path: /etc/systemd/timesyncd.conf
+      search_string: "NTP="
+      insertafter: "#NTP="
+      line: "NTP=10.0.0.1"
+  
+  - name: add ntp.ubuntu.com as fall back ntp server
+    become: true
+    ansible.builtin.lineinfile:
+      backup: yes
+      path: /etc/systemd/timesyncd.conf
+      search_string: '#FalllbackNTP='
+      line: "FallbackNTP=ntp.ubuntu.com"
+
+  - name: restart service systemd-timesyncd service
+    become: true
+    ansible.builtin.service:
+      name: systemd-timesyncd
+      state: restarted
+#4 real time  configuration
+  - name: Modify the real-time priority 
+    copy:
+      dest: /etc/security/limits.d/{{target_robot}}.conf
+      content: |
+        {{target_robot}}    soft    rtprio    99
+        {{target_robot}}    hard    rtprio    99
+
+  - name: Modify max netbuffer
+    copy:
+      dest: /etc/sysctl.d/20-net-rbuffer.conf 
+      content: |
+        net.core.rmem_max=8388608   
+#5 setup network configuration 
+
+  - name: remove netplan configurations
+    command: rm -r /etc/netplan/ 
+    ignore_errors: true
+
+  - name: import network configurations  
+    command: cp  -r netplan_icub/ /etc/netplan
+
+  - name: create symlink 50-icub-head.yaml
+    command: ln -sf /etc/netplan/50-icub-head-static.yaml.notload /etc/netplan/50-icub-head.yaml  
+
+#6 setup robot enviroment  
+  - name: create robot folder 
+    command: mkdir -p /usr/local/src/robot
+
+  - name: set icub ownership to robot folder     
+    command: chown -R {{target_robot}}:{{target_robot}} /usr/local/src/robot
+
+  - name: import bashrc_iCub
+    command: cp .bashrc_iCub /home/{{target_robot}}/. 
+
+  - name: add {{target_robot}} to groups
+    command: usermod -a -G video,audio,tty,dialout,i2c {{target_robot}}    
+
+  - name: add line to bashrc 
+    ansible.builtin.blockinfile:
+      path: /home/{{target_robot}}/.bashrc
+      insertbefore: "# If not running interactively, don't do anything"
+      block: | 
+        if [[ $- == *i* ]] || [[ -n "$SSH_CLIENT" ]] || [[ -n "$SSH_TTY" ]]; then
+          #Load the iCub custom bashrc
+          if [ "$HOME" != "" ]; then
+            ICUBRC_FILE="${HOME}/.bashrc_iCub"
+          else
+            ICUBRC_FILE="/home/icub/.bashrc_iCub"
+          fi
+          if [ -f "$ICUBRC_FILE" ]; then
+            source $ICUBRC_FILE
+          fi
+        fi
+
+
+      
+   
