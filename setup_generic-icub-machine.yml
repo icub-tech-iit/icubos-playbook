@@ -68,7 +68,10 @@
         - iperf3
         - net-tools
         - nmap
-
+  - name: remove not needed packages
+    command: apt purge -y cloud-guest-utils cloud-init cloud-initramfs-copymods cloud-initramfs-dyn-netconf unattended-upgrades    
+    ignore_errors: true
+#2 Creating iCub user if not exists
   - name: Creating user {{ target_robot }}
     become: true
     ansible.builtin.user:
